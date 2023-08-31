@@ -1,0 +1,17 @@
+unnamed-chunk-1	birthday	.Random.seed
+unnamed-chunk-2	data	f	f1	f2	i	j	m	n	p	p1	p2	r	r1	r2	s	sigma	sigmas	y_sim	y1	y2
+unnamed-chunk-3	c1	c2	c3
+unnamed-chunk-4	birthday
+unnamed-chunk-5	data	i	j	m1	m1_res_test	m1_res_train	m2	m2_res_test	m2_res_train	m3	m3_res_test	m3_res_train	m4	m4_res_test	m4_res_train	m5	m5_res_test	m5_res_train	m6	m6_res_test	m6_res_train	m7	m7_res_test	m7_res_train	m8	m8_res_test	m8_res_train	m9	m9_res_test	m9_res_train	n	rmse	sigma	sigmas	test_data	test_results	train_data	train_idx	train_results	y	y_sim
+unnamed-chunk-6	count_model_wins	x
+unnamed-chunk-7	d	res
+unnamed-chunk-8	x
+unnamed-chunk-9	d	res
+unnamed-chunk-10	x
+unnamed-chunk-11	d	res
+unnamed-chunk-12	
+unnamed-chunk-13	birthday
+unnamed-chunk-14	alpha	b1	b1s	i	j	k	l	m	n	ns	p_val	rejections_counters	s	sigma	sigmas	x_values	y	y_sim
+unnamed-chunk-15	x
+unnamed-chunk-16	x
+unnamed-chunk-17	x

@@ -1,0 +1,428 @@
+---
+title: "Is bike sharing good for the Seoul? A study of bike sharing demand prediction."
+author: ""
+NetIds: ""
+date: '2022-08-01'
+output: html_document
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80, fig.alin = "center")
+set.seed(20220801)
+```
+
+## Introduction
+
+### The Data
+
+The dataset we are going to analyze is a collection of 8,760 records and contains the count of public bikes rented at each hour in the Seoul bike sharing system with the corresponding weather data and holidays information. Our goal is to create a model that will predict the demand for bike rentals.
+
+The dataset variables are as follows:
+
+Number of Variables: 14
+
+|     | Variable              | Description                           |
+|-----|-----------------------|---------------------------------------|
+| 1   | Date                  | year-month-day                        |
+| 2   | Rented bike count     | Bikes rented within the hour          |
+| 3   | Hour                  | Hour of the day                       |
+| 4   | Temperature           | Degrees Celsius                       |
+| 5   | Humidity              | \%                                    |
+| 6   | Windspeed             | m/s                                   |
+| 7   | Visibility            | 10m                                   |
+| 8   | Dew point temperature | Celcius                               |
+| 9   | Solar radiation       | MJ/m2                                 |
+| 10  | Rainfall              | mm                                    |
+| 11  | Snowfall              | cm                                    |
+| 12  | Seasons               | Winter/Spring/Summer/Autumn           |
+| 13  | Holiday               | Holiday/No holiday                    |
+| 14  | Functional Day        | Non-functional hours/Functional hours |
+
+### Why are we creating this model?
+
+More and more commonly rental bikes are introduced to cities to facilitate micro-mobility. It is important that enough rental bikes are available to the public, with minimal waiting time, whenever and wherever needed. By using weather data it should be possible to predict how many bikes are required. This should help city planners manage a stable supply of bikes to provide the cyclists with maximum utility while not going overboard and deploying unused bikes.
+
+*Student1's personal statement:* I am interested in physical health and urban infrastructure. Studying how the demand for bike sharing fluctuates with weather conditions should provide insights into the value (or lack thereof) of bike sharing projects.
+
+*Student2's personal statement:* Recently, I have noticed more bike stations popping up around my city and I have even tried renting bikes from them. Where I live the weather is pleasant for most of the year; however, I know this is not the case everywhere. Because of this, I want to study the demand for bikes depending on the weather. I am also generally interested in health and fitness and anything that encourages people to go outside and move.
+
+### The Data Source
+
+The dataset can be found at: <https://archive.ics.uci.edu/ml/datasets/Seoul+Bike+Sharing+Demand>
+
+The data is extracted from: <http://data.seoul.go.kr/>
+
+Relevant Papers:
+
+[1] Sathishkumar V E, Jangwoo Park, and Yongyun Cho. 'Using data mining techniques for bike sharing demand prediction in metropolitan city.' Computer Communications, Vol.153, pp.353-366, March, 2020
+
+[2] Sathishkumar V E and Yongyun Cho. 'A rule-based model for Seoul Bike sharing demand prediction using weather data' European Journal of Remote Sensing, pp. 1-18, Feb, 2020
+
+## Methods
+
+### Libraries
+
+```{r, warning = FALSE}
+library(readr)
+library(lmtest)
+library(boot)
+library(faraway)
+library(nortest)
+```
+
+### Functions
+
+```{r}
+rmse = function(actual, predicted)
+{
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+### Loading the Data
+
+```{r}
+SeoulBikeData = read_csv("SeoulBikeData.csv", locale = locale(encoding = "latin1"), show_col_types = FALSE)
+```
+
+### Data Exploration and Pre-Processing
+
+```{r}
+# View the first few rows
+head(SeoulBikeData)
+```
+
+```{r}
+# Looking at the data in more detail
+str(SeoulBikeData)
+```
+
+`Seasons`, `Holiday` , `Functioning Day` and `Hour` all appear to be categories and should be changed to factor variables.
+
+```{r}
+# Changing variables to factor variables
+SeoulBikeData$Seasons = as.factor(SeoulBikeData$Seasons)
+SeoulBikeData$Holiday = as.factor(SeoulBikeData$Holiday)
+SeoulBikeData$`Functioning Day` = as.factor(SeoulBikeData$`Functioning Day`)
+SeoulBikeData$Hour = as.factor(SeoulBikeData$Hour)
+```
+
+```{r}
+# Looking at the levels of each of the factor variables
+levels(SeoulBikeData$Seasons)
+levels(SeoulBikeData$Holiday)
+levels(SeoulBikeData$`Functioning Day`)
+levels(SeoulBikeData$Hour)
+```
+
+```{r}
+# Removing data points for non-functioning days because on these days bikes cannot be rented
+SeoulBikeData = subset(SeoulBikeData, SeoulBikeData$`Functioning Day` != "No")
+```
+
+```{r}
+# Let's remove the Date variable as well and now Functioning day because it is not longer useful.
+SeoulBikeData = subset(SeoulBikeData, select = -c(Date, `Functioning Day`))
+```
+
+
+#### Looking for related variables
+
+Now to assess if there are issues with co-linearity we will look at the variance inflation factor for a naive linear model.
+
+```{r}
+naive_model = lm(`Rented Bike Count` ~ ., SeoulBikeData)
+vif(naive_model)
+```
+
+By looking at the variance inflation factors for all features in the naive additive model we see that `Dew point temperature(°C)`, `Temperature(°C)` and `Humidity(%)` all have high values (greater than 5). This suggests multi-colinearity is having a large effect on the model.
+
+Let's calculate the partial correlation coefficient for the predictor with the largest variance inflation factor. We will see that the partial correlation coefficient is low, suggesting that the predictor is redundant. We will now remove this predictor from the dataset.
+
+```{r}
+dew_point_model = lm(`Dew point temperature(°C)` ~ . - `Rented Bike Count`, data = SeoulBikeData)
+
+naive_model_no_dew_point = lm(`Rented Bike Count` ~ . - `Dew point temperature(°C)`, data = SeoulBikeData)
+
+cor(resid(dew_point_model), resid(naive_model_no_dew_point))
+
+SeoulBikeData = subset(SeoulBikeData, select = -c(`Dew point temperature(°C)`))
+
+naive_model = lm(`Rented Bike Count` ~ ., SeoulBikeData)
+vif(naive_model)
+```
+
+We see that once we remove `Dew point temperature(°C)` from the model, we no longer need to remove `Humidity(%)`. `Temperature(°C)` still has a variance inflation factor around 5, but since we just decided to remove `Dew point temperature(°C)`, we are going to keep `Temperature(°C)` in the dataset.
+
+Let's also fit a simple model on all data, identify influential points by calculating Cook's distance, and remove such points.
+
+```{r}
+naive_model = lm(`Rented Bike Count` ~ ., SeoulBikeData)
+SeoulBikeData = SeoulBikeData[cooks.distance(naive_model) <= (4 / length(cooks.distance(naive_model))),]
+```
+
+#### Splitting Data into Training and Testing Sets
+
+```{r}
+# Create train and test datasets with 70% of the data used for training.
+trn_idx = sample(1:nrow(SeoulBikeData), nrow(SeoulBikeData) * .70)
+train = SeoulBikeData[trn_idx,]
+test = SeoulBikeData[-trn_idx,]
+```
+
+### Looking for a Good Model
+
+We selected train and test RMSE as our metrics to be able to track whether a particular model overfits. We selected Adjusted $R^2$ to judge the models based on both their performance and complexity. Finally, we intended to calculate LOOCV or K-fold Cross Validation values for our models, but decided against it due to a technical constraint -- LOOCV is computationally expensive to compute for a logarithmic model, and the K-fold CV implementations available in R do not work well with models that have factor variables, which is the case with our project. Still, 30% of our dataset is allocated for the test dataset, so we deem that sufficient to flag any problems with overfitting.
+
+```{r}
+# Initialize a dataframe to store some metrics.
+results_df = data.frame(matrix(ncol = 4, nrow = 10))
+colnames(results_df) = c("Model", "Train RMSE", "Test RMSE", "Adjusted R^2")
+```
+
+As a starting point we fit a naive additive model using all predictors.
+
+```{r}
+naive_model = lm(`Rented Bike Count` ~ ., train)
+```
+
+```{r}
+results_df[1, 1] = "naive_model"
+results_df[1, 2] = rmse(train$`Rented Bike Count`, predict(naive_model))
+results_df[1, 3] = rmse(test$`Rented Bike Count`, predict(naive_model, test))
+results_df[1, 4] = summary(naive_model)$adj.r.squared
+```
+
+We will try an interaction model as well to see if it improves on the additive model.
+
+```{r}
+interaction_model = lm(`Rented Bike Count` ~ . ^ 2, data=train)
+```
+
+Now we will try to fit some larger models. We fit a number of polynomial models so that we can inspect how RMSE changes with increasing model complexity. We also include interaction terms in our models.
+
+After some experimentation we noticed that `log` transforming the response gives better results for this data, so we will do that here.
+
+```{r}
+p2_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 2) 
+                      + I(`Wind speed (m/s)` ^ 2)
+                      + I(`Visibility (10m)` ^ 2) 
+                      + I(`Humidity(%)` ^ 2)
+                      + I(`Solar Radiation (MJ/m2)` ^ 2) 
+                      + I(`Rainfall(mm)` ^ 2) 
+                      + I(`Snowfall (cm)` ^ 2)
+                      + I(`Temperature(°C)` ^ 2)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p3_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 3) 
+                      + I(`Wind speed (m/s)` ^ 3)
+                      + I(`Visibility (10m)` ^ 3) 
+                      + I(`Humidity(%)` ^ 3)
+                      + I(`Solar Radiation (MJ/m2)` ^ 3) 
+                      + I(`Rainfall(mm)` ^ 3) 
+                      + I(`Snowfall (cm)` ^ 3)
+                      + I(`Temperature(°C)` ^ 3)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p4_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 4) 
+                      + I(`Wind speed (m/s)` ^ 4)
+                      + I(`Visibility (10m)` ^ 4) 
+                      + I(`Humidity(%)` ^ 4)
+                      + I(`Solar Radiation (MJ/m2)` ^ 4) 
+                      + I(`Rainfall(mm)` ^ 4) 
+                      + I(`Snowfall (cm)` ^ 4)
+                      + I(`Temperature(°C)` ^ 4)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p5_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 5) 
+                      + I(`Wind speed (m/s)` ^ 5)
+                      + I(`Visibility (10m)` ^ 5) 
+                      + I(`Humidity(%)` ^ 5)
+                      + I(`Solar Radiation (MJ/m2)` ^ 5) 
+                      + I(`Rainfall(mm)` ^ 5) 
+                      + I(`Snowfall (cm)` ^ 5)
+                      + I(`Temperature(°C)` ^ 5)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p6_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 6) 
+                      + I(`Wind speed (m/s)` ^ 6)
+                      + I(`Visibility (10m)` ^ 6) 
+                      + I(`Humidity(%)` ^ 6)
+                      + I(`Solar Radiation (MJ/m2)` ^ 6) 
+                      + I(`Rainfall(mm)` ^ 6) 
+                      + I(`Snowfall (cm)` ^ 6)
+                      + I(`Temperature(°C)` ^ 6)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p7_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 7) 
+                      + I(`Wind speed (m/s)` ^ 7)
+                      + I(`Visibility (10m)` ^ 7) 
+                      + I(`Humidity(%)` ^ 7)
+                      + I(`Solar Radiation (MJ/m2)` ^ 7) 
+                      + I(`Rainfall(mm)` ^ 7) 
+                      + I(`Snowfall (cm)` ^ 7)
+                      + I(`Temperature(°C)` ^ 7)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p8_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 8) 
+                      + I(`Wind speed (m/s)` ^ 8)
+                      + I(`Visibility (10m)` ^ 8) 
+                      + I(`Humidity(%)` ^ 8)
+                      + I(`Solar Radiation (MJ/m2)` ^ 8) 
+                      + I(`Rainfall(mm)` ^ 8) 
+                      + I(`Snowfall (cm)` ^ 8)
+                      + I(`Temperature(°C)` ^ 8)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+
+p9_model_with_interaction = lm(log(`Rented Bike Count`) ~ 
+                      + I(`Humidity(%)` ^ 9) 
+                      + I(`Wind speed (m/s)` ^ 9)
+                      + I(`Visibility (10m)` ^ 9) 
+                      + I(`Humidity(%)` ^ 9)
+                      + I(`Solar Radiation (MJ/m2)` ^ 9) 
+                      + I(`Rainfall(mm)` ^ 9) 
+                      + I(`Snowfall (cm)` ^ 9)
+                      + I(`Temperature(°C)` ^ 9)
+                      + Seasons
+                      + Holiday
+                      + Hour
+                      + . ^ 2,
+                      data = train)
+```
+
+```{r, warning = FALSE}
+results_df[2, 1] = "interaction_model"
+results_df[2, 2] = rmse(train$`Rented Bike Count`, predict(interaction_model))
+results_df[2, 3] = rmse(test$`Rented Bike Count`, predict(interaction_model, test))
+results_df[2, 4] = summary(interaction_model)$adj.r.squared
+
+results_df[3, 1] = "p2_model_with_interaction"
+results_df[3, 2] = rmse(train$`Rented Bike Count`, exp(predict(p2_model_with_interaction)))
+results_df[3, 3] = rmse(test$`Rented Bike Count`, exp(predict(p2_model_with_interaction, test)))
+results_df[3, 4] = summary(p2_model_with_interaction)$adj.r.squared
+
+results_df[4, 1] = "p3_model_with_interaction"
+results_df[4, 2] = rmse(train$`Rented Bike Count`, exp(predict(p3_model_with_interaction)))
+results_df[4, 3] = rmse(test$`Rented Bike Count`, exp(predict(p3_model_with_interaction, test)))
+results_df[4, 4] = summary(p3_model_with_interaction)$adj.r.squared
+
+
+results_df[5, 1] = "p4_model_with_interaction"
+results_df[5, 2] = rmse(train$`Rented Bike Count`, exp(predict(p4_model_with_interaction)))
+results_df[5, 3] = rmse(test$`Rented Bike Count`, exp(predict(p4_model_with_interaction, test)))
+results_df[5, 4] = summary(p4_model_with_interaction)$adj.r.squared
+
+
+results_df[6, 1] = "p5_model_with_interaction"
+results_df[6, 2] = rmse(train$`Rented Bike Count`, exp(predict(p5_model_with_interaction)))
+results_df[6, 3] = rmse(test$`Rented Bike Count`, exp(predict(p5_model_with_interaction, test)))
+results_df[6, 4] = summary(p5_model_with_interaction)$adj.r.squared
+
+
+results_df[7, 1] = "p6_model_with_interaction"
+results_df[7, 2] = rmse(train$`Rented Bike Count`, exp(predict(p6_model_with_interaction)))
+results_df[7, 3] = rmse(test$`Rented Bike Count`, exp(predict(p6_model_with_interaction, test)))
+results_df[7, 4] = summary(p6_model_with_interaction)$adj.r.squared
+
+
+results_df[8, 1] = "p7_model_with_interaction"
+results_df[8, 2] = rmse(train$`Rented Bike Count`, exp(predict(p7_model_with_interaction)))
+results_df[8, 3] = rmse(test$`Rented Bike Count`, exp(predict(p7_model_with_interaction, test)))
+results_df[8, 4] = summary(p7_model_with_interaction)$adj.r.squared
+
+
+results_df[9, 1] = "p8_model_with_interaction"
+results_df[9, 2] = rmse(train$`Rented Bike Count`, exp(predict(p8_model_with_interaction)))
+results_df[9, 3] = rmse(test$`Rented Bike Count`, exp(predict(p8_model_with_interaction, test)))
+results_df[9, 4] = summary(p8_model_with_interaction)$adj.r.squared
+
+
+results_df[10, 1] = "p9_model_with_interaction"
+results_df[10, 2] = rmse(train$`Rented Bike Count`, exp(predict(p9_model_with_interaction)))
+results_df[10, 3] = rmse(test$`Rented Bike Count`, exp(predict(p9_model_with_interaction, test)))
+results_df[10, 4] = summary(p9_model_with_interaction)$adj.r.squared
+```
+
+## Results
+
+Finally, let's take a look at the performance of the models.
+
+```{r}
+results_df
+```
+
+We see that the lowest Train RMSE of `r results_df[6, 2]` belongs to `p5_model_with_interaction`. Up to a point, the more complex a model, the lower the Train RMSE. We see  that Train RMSE starts increasing starting at the polynomial of degree 6. Similarly, the Test RMSE is the lowest for model `p5_model_with_interaction`, at `r results_df[6, 3]`. We see that past that point, the models start overfitting, and RMSE keeps growing with model complexity. It is also notable that the Adjusted $R^2$ grows despite growing model complexity (with the exception of `p9_model_with_interaction`). This metric should account for both model performance and model size, and in our case whatever improvements more complex models add to $R^2$ are clearly too marginal to disregard the issues that come with an overly large model.
+
+As such, we conclude that `p5_model_with_interaction` is our best model.
+
+### Checking Assumptions
+
+Now, let's see if our best model, `p5_model_with_interaction`, satisfies LINE assumptions. In particular, we want to visualize the Linearity, Equal Variance, and Normality behavior of the model. Based on the visualizations, we will decide whether there is any benefit to running the quantitative Breusch-Pagan and Shapiro-Wilk tests.
+
+```{r}
+plot(fitted(p5_model_with_interaction), resid(p5_model_with_interaction), col = "grey", pch = 20,
+     xlab = "Fitted", ylab = "Residuals", main = "p5_model_with_interaction")
+abline(h = 0, col = "darkorange", lwd = 2)
+```
+
+In the above Fitted-Residuals plot, we see that the datapoints are vertically centered around zero, suggesting that the model meets the Linearity requirement. However, the Equal Variance assumption is clearly violated, to the point where the Breusch-Pagan test is not needed to reject the homoskedasticity null hypothesis. Still, over many attempts to model the data we found that this is as close to Equal Variance as we could get, and all the steps we took in data pre-processing (removing non-functional days, transforming the response, removing outlier datapoints, creating factor variables) made a positive impact toward making error variance more constant.
+
+```{r}
+qqnorm(resid(p5_model_with_interaction), main = "Normal Q-Q Plot, p5_model_with_interaction", col = "darkgrey")
+qqline(resid(p5_model_with_interaction), col = "dodgerblue", lwd = 2)
+```
+
+The Normality assumption is also clearly violated. Still, we believe `p5_model_with_interaction` is a much better model than any other that we have evaluated while working on this analysis.
+
+## Discussion
+
+This model should be useful for predicting the number of bikes that need to be available. The best model we found was one that used fifth degree polynomials as well as interaction terms, with the response `log`-transformed. The model has training RMSE of `r results_df[6, 2]` and test RMSE of `r results_df[6, 3]`. This suggests that when calculating the number of bikes needed the results will be on average `r results_df[6, 3]` off the real number. In this context, the number is not so large, when we consider that in 2020 the year the data was donated, the population of Seoul was 9.9 Million (<https://www.macrotrends.net/cities/21758/seoul/population>). Our chosen model has an Adjusted $R^2$ of `r results_df[6, 4]`. This means that our model successfully explains most of the variability in the data.
+
+Unfortunately our model violates the normality and equal variance assumptions, meaning that some of the tests such as Student's t-test or ANOVA F-test can't be meaningfully applied to it. Given the limitations of linear regression methods, however, we are happy with the predictive power of the model. The model may be used to find a starting point for how many bikes should be available to facilitate micro-mobility.
+
+## Appendix
+
+**Group Members:**
+
+Ilya Andreev (iandre3\@illinois.edu)
+
+Rhaam Rozenberg (rhaamr2\@illinois.edu)

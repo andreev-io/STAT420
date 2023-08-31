@@ -1,0 +1,17 @@
+unnamed-chunk-1	set.seed
+unnamed-chunk-2	[[	[[<-	[<-	~	$	c	for	list	lm	pf	read.csv	rep	rnorm	summary
+unnamed-chunk-3	[[	c	f1	f2	hist	p1	p2	par	r1	r2	rgb
+unnamed-chunk-4	set.seed
+unnamed-chunk-5	[[	[[<-	[<-	^	~	$	c	for	length	list	lm	predict	read.csv	rep	rnorm	sample	seq_len	sqrt	sum
+unnamed-chunk-6	[[	[<-	c	for	legend	length	lines	mean	plot	rep	test_results	train_results	which.min
+unnamed-chunk-7	::	[[	c	count_model_wins	data.frame	test_results
+unnamed-chunk-8	[[	c	legend	lines	mean	plot	test_results	train_results
+unnamed-chunk-9	::	[[	c	count_model_wins	data.frame	test_results
+unnamed-chunk-10	[[	c	legend	lines	mean	plot	test_results	train_results
+unnamed-chunk-11	::	[[	c	count_model_wins	data.frame	test_results
+unnamed-chunk-12	n	seq
+unnamed-chunk-13	set.seed
+unnamed-chunk-14	[[	[[<-	[<-	<	~	$	c	for	length	list	lm	pf	rep	rnorm	seq	summary
+unnamed-chunk-15	[[	b1s	c	legend	lines	plot	rejections_counters
+unnamed-chunk-16	[[	b1s	c	legend	lines	plot	rejections_counters
+unnamed-chunk-17	[[	b1s	c	legend	lines	plot	rejections_counters
